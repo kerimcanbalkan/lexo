@@ -140,7 +140,7 @@ func main() {
 		fmt.Println("could not load file:", err)
 		os.Exit(1)
 	}
-	content := strings.Join(ep.Contents, "\n")
+	content := strings.Join(ep.Contents, "\n\n")
 
 	p := tea.NewProgram(
 		model{content: string(content), title: ep.MetaData.Title},

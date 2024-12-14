@@ -6,7 +6,20 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"golang.org/x/net/html"
+)
+
+// Define Lipgloss styles
+var (
+	h1Style   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#cc241d"))
+	h2Style   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#98971a"))
+	h3Style   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#b16286"))
+	pStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#fff"))
+	codeStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#458588")).
+			Background(lipgloss.Color("#1d2021")).
+			Padding(0, 1)
 )
 
 func ParseHTML(f *zip.File) (string, error) {
@@ -15,7 +28,6 @@ func ParseHTML(f *zip.File) (string, error) {
 		return "", err
 	}
 	defer rc.Close()
-
 	doc, err := html.Parse(rc)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse HTML: %v", err)
@@ -52,13 +64,16 @@ func extractText(node *html.Node, sb *strings.Builder) {
 		if strings.HasPrefix(node.Data, "h") {
 			headerLevel, err := strconv.Atoi(node.Data[1:])
 			if err == nil && headerLevel >= 1 && headerLevel <= 6 {
-				sb.WriteString(strings.Repeat("#", headerLevel))
-				appendNodeText(node, sb) // Append the header content
-				sb.WriteString(strings.Repeat("#", headerLevel) + "\n")
+				style := getHeaderStyle(headerLevel)
+				content := getNodeText(node)
+				sb.WriteString(style.Render(content) + "\n\n")
 			}
 		} else if node.Data == "p" {
-			appendNodeText(node, sb) // Append paragraph content
-			sb.WriteString("\n")
+			content := getNodeText(node)
+			sb.WriteString(pStyle.Render(content) + "\n\n")
+		} else if node.Data == "code" {
+			content := getNodeText(node)
+			sb.WriteString(codeStyle.Render(content) + "\n\n")
 		}
 	}
 
@@ -66,6 +81,25 @@ func extractText(node *html.Node, sb *strings.Builder) {
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
 		extractText(child, sb)
 	}
+}
+
+func getHeaderStyle(level int) lipgloss.Style {
+	switch level {
+	case 1:
+		return h1Style
+	case 2:
+		return h2Style
+	case 3:
+		return h3Style
+	default:
+		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("60"))
+	}
+}
+
+func getNodeText(node *html.Node) string {
+	var sb strings.Builder
+	appendNodeText(node, &sb)
+	return strings.TrimSpace(sb.String())
 }
 
 func appendNodeText(node *html.Node, sb *strings.Builder) {
