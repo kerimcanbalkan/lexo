@@ -9,8 +9,7 @@ import (
 
 func findFile(zipReader *zip.ReadCloser, name string) (io.ReadCloser, error) {
 	for _, file := range zipReader.File {
-		fmt.Println("file.name den gelen", file.Name)
-		if strings.EqualFold(file.Name, name) {
+		if strings.EqualFold(file.Name, name) || strings.HasSuffix(file.Name, name) {
 			return file.Open()
 		}
 	}
