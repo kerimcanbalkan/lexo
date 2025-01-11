@@ -55,7 +55,6 @@ func (r *EPUBReader) Parse() (*EPUBFile, error) {
 	// Read the XHTML contents in the spine order
 	contents := make([]string, 0)
 	for _, href := range spine {
-		fmt.Println(href)
 		contentFile, err := findFile(r.zipReader, href)
 		if err != nil {
 			continue // Skip missing files
