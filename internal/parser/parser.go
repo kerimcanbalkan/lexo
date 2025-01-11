@@ -1,8 +1,8 @@
 package parser
 
 import (
-	"archive/zip"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 
@@ -22,13 +22,10 @@ var (
 			Padding(0, 1)
 )
 
-func ParseHTML(f *zip.File) (string, error) {
-	rc, err := f.Open()
-	if err != nil {
-		return "", err
-	}
-	defer rc.Close()
-	doc, err := html.Parse(rc)
+func ParseHTML(f io.ReadCloser) (string, error) {
+	defer f.Close()
+
+	doc, err := html.Parse(f)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse HTML: %v", err)
 	}

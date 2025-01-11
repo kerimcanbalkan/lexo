@@ -2,76 +2,69 @@ package epub
 
 import (
 	"archive/zip"
-	"encoding/xml"
 	"fmt"
-	"os"
-	"strings"
 
 	"github.com/kerimcanbalkan/lexo/internal/parser"
 )
 
-// EPUBFile represents an EPUB file
 type EPUBFile struct {
 	MetaData MetaData
 	Contents []string
 }
 
-// MetaData represents metadata of an EPUB book
-type MetaData struct {
-	Title    string `xml:"metadata>title"`
-	Language string `xml:"metadata>language"`
-	Author   string `xml:"metadata>creator"`
+type EPUBReader struct {
+	filePath  string
+	zipReader *zip.ReadCloser
 }
 
-// OpenEPUB opens and reads an EPUB file
-func OpenEPUB(filePath string) (*EPUBFile, error) {
-	r, err := zip.OpenReader(filePath)
+func NewEPUBReader(filePath string) (*EPUBReader, error) {
+	zipReader, err := zip.OpenReader(filePath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open EPUB file: %v", err)
 	}
-	defer r.Close()
+	return &EPUBReader{filePath: filePath, zipReader: zipReader}, nil
+}
 
-	var epub EPUBFile
-	for _, f := range r.File {
-		// Check for metadata and content files
-		if strings.HasSuffix(f.Name, ".opf") {
-			// Metadata file found
-			meta, err := ReadMetaData(f)
-			if err != nil {
-				return nil, err
-			}
-			epub.MetaData = meta
-		} else if strings.HasSuffix(f.Name, ".html") || strings.HasSuffix(f.Name, ".xhtml") {
-			// Add content files
-			c, err := readContentFile(f)
-			if err != nil {
-				return nil, err
-			}
-			epub.Contents = append(epub.Contents, c)
+func (r *EPUBReader) Parse() (*EPUBFile, error) {
+	defer r.zipReader.Close()
+
+	// Locate container.xml
+	containerPath := "META-INF/container.xml"
+	containerFile, err := findFile(r.zipReader, containerPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to locate container.xml: %v", err)
+	}
+
+	// Parse container.xml to find the OPF path
+	opfPath, err := parseContainer(containerFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse container.xml: %v", err)
+	}
+
+	// Locate and parse OPF file
+	opfFile, err := findFile(r.zipReader, opfPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to locate OPF file: %v", err)
+	}
+
+	metaData, spine, err := parseOPF(opfFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse OPF file: %v", err)
+	}
+
+	// Read the XHTML contents in the spine order
+	contents := make([]string, 0)
+	for _, href := range spine {
+		contentFile, err := findFile(r.zipReader, "OEBPS/"+href)
+		if err != nil {
+			continue // Skip missing files
 		}
+		contentData, err := parser.ParseHTML(contentFile)
+		if err != nil {
+			continue // Skip unreadable files
+		}
+		contents = append(contents, string(contentData))
 	}
-	return &epub, nil
-}
 
-// readMetaData reads metadata from the .opf file
-func ReadMetaData(f *zip.File) (MetaData, error) {
-	rc, err := f.Open()
-	if err != nil {
-		return MetaData{}, err
-	}
-	defer rc.Close()
-
-	var meta MetaData
-	decoder := xml.NewDecoder(rc)
-	err = decoder.Decode(&meta)
-	return meta, err
-}
-
-func readContentFile(f *zip.File) (string, error) {
-	parsedContent, err := parser.ParseHTML(f)
-	if err != nil {
-		fmt.Println("could not parse the html", err)
-		os.Exit(1)
-	}
-	return parsedContent, nil
+	return &EPUBFile{MetaData: metaData, Contents: contents}, nil
 }

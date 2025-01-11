@@ -135,11 +135,18 @@ func main() {
 		fmt.Println("you should provide the book")
 		os.Exit(1)
 	}
-	ep, err := epub.OpenEPUB(filePath)
+	reader, err := epub.NewEPUBReader(filePath)
 	if err != nil {
-		fmt.Println("could not load file:", err)
-		os.Exit(1)
+		fmt.Printf("Error opening EPUB: %v\n", err)
+		return
 	}
+
+	ep, err := reader.Parse()
+	if err != nil {
+		fmt.Printf("Error parsing EPUB: %v\n", err)
+		return
+	}
+
 	content := strings.Join(ep.Contents, "\n\n")
 
 	p := tea.NewProgram(
