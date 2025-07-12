@@ -46,14 +46,13 @@ type model struct {
 	title    string
 	ready    bool
 	viewport viewport.Model
-	pos      int
 }
 
-func (m *model) loadPos() {
+func (m *model) loadYOffset() {
 	configDir, err := os.UserConfigDir()
 	if err != nil {
 		// can't get config dir → default to zero and log for visibility
-		m.pos = 0
+		m.viewport.YOffset = 0
 		return
 	}
 
@@ -64,7 +63,7 @@ func (m *model) loadPos() {
 	data, err := os.ReadFile(posPath)
 	if err != nil {
 		// file missing or unreadable → default to zero (likely first run)
-		m.pos = 0
+		m.viewport.YOffset = 0
 		return
 	}
 
@@ -72,11 +71,11 @@ func (m *model) loadPos() {
 	posNum, err := strconv.Atoi(s)
 	if err != nil {
 		// corrupted data → fallback to zero
-		m.pos = 0
+		m.viewport.YOffset = 0
 		return
 	}
 
-	m.pos = posNum
+	m.viewport.YOffset = posNum
 }
 
 func (m model) Init() tea.Cmd {
@@ -143,8 +142,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.YPosition = headerHeight
 			m.viewport.HighPerformanceRendering = useHighPerformanceRenderer
 			m.viewport.SetContent(m.content)
-			m.loadPos()
-			m.viewport.YOffset = m.pos
+			m.loadYOffset()
 
 			m.ready = true
 
