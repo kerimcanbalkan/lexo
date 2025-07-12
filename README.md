@@ -7,3 +7,7 @@ Lexo is TUI epub reader written in Go
 ```bash
 $ lexo book.epub
 ```
+
+## Screenshot
+
+![lexo](public/lexo.png)
