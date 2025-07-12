@@ -5,7 +5,11 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -42,9 +46,68 @@ type model struct {
 	title    string
 	ready    bool
 	viewport viewport.Model
+	pos      int
+}
+
+func (m *model) loadPos() {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		// can't get config dir → default to zero and log for visibility
+		m.pos = 0
+		return
+	}
+
+	appDir := filepath.Join(configDir, "lexo")
+	name := sanitize(m.title) + ".pos"
+	posPath := filepath.Join(appDir, name)
+
+	data, err := os.ReadFile(posPath)
+	if err != nil {
+		// file missing or unreadable → default to zero (likely first run)
+		m.pos = 0
+		return
+	}
+
+	s := strings.TrimSpace(string(data))
+	posNum, err := strconv.Atoi(s)
+	if err != nil {
+		// corrupted data → fallback to zero
+		m.pos = 0
+		return
+	}
+
+	m.pos = posNum
 }
 
 func (m model) Init() tea.Cmd {
+	return nil
+}
+
+func (m *model) savePos() error {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		// Couldn’t locate config dir: log and return
+		log.Printf("savePos: cannot locate config dir, pos not saved: %v", err)
+		return err
+	}
+
+	// Ensure app directory exists: ~/.config/lexo
+	appDir := filepath.Join(configDir, "lexo")
+	if err := os.MkdirAll(appDir, 0700); err != nil {
+		log.Printf("savePos: cannot create app directory %q: %v", appDir, err)
+		return err
+	}
+
+	name := sanitize(m.title) + ".pos"
+	posPath := filepath.Join(appDir, name)
+
+	// Write the position using secure file permissions
+	data := []byte(fmt.Sprint(m.viewport.YOffset))
+	if err := os.WriteFile(posPath, data, 0600); err != nil {
+		log.Printf("savePos: cannot write pos file %q: %v", posPath, err)
+		return err
+	}
+
 	return nil
 }
 
@@ -57,6 +120,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if k := msg.String(); k == "ctrl+c" || k == "q" || k == "esc" {
+			err := m.savePos()
+			if err != nil {
+				log.Fatal("Could not save position", err.Error())
+				return m, tea.Quit
+			}
 			return m, tea.Quit
 		}
 
@@ -75,6 +143,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.YPosition = headerHeight
 			m.viewport.HighPerformanceRendering = useHighPerformanceRenderer
 			m.viewport.SetContent(m.content)
+			m.loadPos()
+			m.viewport.YOffset = m.pos
+
 			m.ready = true
 
 			// This is only necessary for high performance rendering, which in
@@ -130,11 +201,13 @@ func max(a, b int) int {
 }
 
 func main() {
-	filePath := os.Args[1]
-	if filePath == "" {
-		fmt.Println("you should provide the book")
+	if len(os.Args) < 2 || os.Args[1] == "" {
+		fmt.Fprintf(os.Stderr, "Usage: %s <ebook.epub>\n", filepath.Base(os.Args[0]))
 		os.Exit(1)
 	}
+
+	filePath := os.Args[1]
+
 	reader, err := epub.NewEPUBReader(filePath)
 	if err != nil {
 		fmt.Printf("Error opening EPUB: %v\n", err)
@@ -159,4 +232,15 @@ func main() {
 		fmt.Println("could not run program:", err)
 		os.Exit(1)
 	}
+}
+
+func sanitize(title string) string {
+	s := strings.TrimSpace(title)
+	// Replace everything not a letter or digit with hyphens
+	re := regexp.MustCompile(`[^A-Za-z0-9]+`)
+	s = re.ReplaceAllString(s, "-")
+	// Collapse multiple hyphens into one
+	s = regexp.MustCompile(`-+`).ReplaceAllString(s, "-")
+	s = strings.Trim(s, "-")
+	return strings.ToLower(s)
 }
