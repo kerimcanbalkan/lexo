@@ -33,7 +33,6 @@ var (
 		b.Right = "├"
 		return lipgloss.NewStyle().BorderStyle(b).Padding(0, 1)
 	}()
-
 	infoStyle = func() lipgloss.Style {
 		b := lipgloss.RoundedBorder()
 		b.Left = "┤"
@@ -92,7 +91,7 @@ func (m *model) savePos() error {
 
 	// Ensure app directory exists: ~/.config/lexo
 	appDir := filepath.Join(configDir, "lexo")
-	if err := os.MkdirAll(appDir, 0700); err != nil {
+	if err := os.MkdirAll(appDir, 0o700); err != nil {
 		log.Printf("savePos: cannot create app directory %q: %v", appDir, err)
 		return err
 	}
@@ -102,7 +101,7 @@ func (m *model) savePos() error {
 
 	// Write the position using secure file permissions
 	data := []byte(fmt.Sprint(m.viewport.YOffset))
-	if err := os.WriteFile(posPath, data, 0600); err != nil {
+	if err := os.WriteFile(posPath, data, 0o600); err != nil {
 		log.Printf("savePos: cannot write pos file %q: %v", posPath, err)
 		return err
 	}

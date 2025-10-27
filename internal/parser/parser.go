@@ -12,13 +12,39 @@ import (
 
 // Define Lipgloss styles
 var (
-	h1Style   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#cc241d"))
-	h2Style   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#98971a"))
-	h3Style   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#b16286"))
-	pStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#fff"))
+	h1Style = lipgloss.NewStyle().
+		Bold(true).
+		SetString("*").
+		Foreground(lipgloss.AdaptiveColor{Light: "2", Dark: "11"})
+	h2Style = lipgloss.NewStyle().
+		Bold(true).
+		SetString("**").
+		Foreground(lipgloss.AdaptiveColor{Light: "4", Dark: "13"})
+	h3Style = lipgloss.NewStyle().
+		SetString("***").
+		Bold(true).
+		Foreground(lipgloss.AdaptiveColor{Light: "1", Dark: "1"})
+	h4Style = lipgloss.NewStyle().
+		SetString("****").
+		Bold(true).
+		Foreground(lipgloss.AdaptiveColor{Light: "13", Dark: "12"})
+	h5Style = lipgloss.NewStyle().
+		SetString("*****").
+		Bold(true).
+		Foreground(lipgloss.AdaptiveColor{Light: "9", Dark: "6"})
+	h6Style = lipgloss.NewStyle().
+		SetString("******").
+		Bold(true).
+		Foreground(lipgloss.AdaptiveColor{Light: "14", Dark: "11"})
+	aStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.AdaptiveColor{Light: "4", Dark: "4"}).
+		Underline(true)
+	pStyle  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "0", Dark: "15"})
+	liStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.AdaptiveColor{Light: "4", Dark: "4"}).SetString("•").Padding(0, 1)
 	codeStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#458588")).
-			Background(lipgloss.Color("#1d2021")).
+			Foreground(lipgloss.AdaptiveColor{Light: "15", Dark: "0"}).
+			Background(lipgloss.AdaptiveColor{Light: "0", Dark: "15"}).
 			Padding(0, 1)
 )
 
@@ -63,14 +89,53 @@ func extractText(node *html.Node, sb *strings.Builder) {
 			if err == nil && headerLevel >= 1 && headerLevel <= 6 {
 				style := getHeaderStyle(headerLevel)
 				content := getNodeText(node)
-				sb.WriteString(style.Render(content) + "\n\n")
+				sb.WriteString(style.Render(content) + "\n")
 			}
 		} else if node.Data == "p" {
-			content := getNodeText(node)
-			sb.WriteString(pStyle.Render(content) + "\n\n")
+			var inner strings.Builder
+			for child := node.FirstChild; child != nil; child = child.NextSibling {
+				renderInline(child, &inner)
+			}
+			sb.WriteString(pStyle.Render(inner.String()) + "\n\n")
 		} else if node.Data == "code" {
 			content := getNodeText(node)
-			sb.WriteString(codeStyle.Render(content) + "\n\n")
+			sb.WriteString(codeStyle.Render(content) + "\n")
+		} else if node.Data == "pre" {
+			content := getNodeText(node)
+			sb.WriteString(codeStyle.Render(content) + "\n")
+		} else if node.Data == "a" {
+			content := getNodeText(node)
+			sb.WriteString(aStyle.Render(content) + "\n")
+		} else if node.Data == "ul" {
+			for child := node.FirstChild; child != nil; child = child.NextSibling {
+				if child.Type == html.ElementNode && child.Data == "li" {
+					content := getNodeText(child)
+					sb.WriteString(liStyle.Render(content) + "\n")
+					// Check for nested lists inside the same li
+					for grandchild := child.FirstChild; grandchild != nil; grandchild = grandchild.NextSibling {
+						if grandchild.Type == html.ElementNode && grandchild.Data == "ul" {
+							extractText(grandchild, sb)
+						}
+					}
+				}
+			}
+			sb.WriteString("\n")
+		} else if node.Data == "img" {
+			var altText string
+
+			// Extract the alt attribute
+			for _, attr := range node.Attr {
+				if attr.Key == "alt" {
+					altText = attr.Val
+					break
+				}
+			}
+
+			if altText != "" {
+				sb.WriteString(pStyle.Render(fmt.Sprintf("[IMG: %s]", altText)) + "\n\n")
+			} else {
+				sb.WriteString(pStyle.Render("[IMG]") + "\n\n")
+			}
 		}
 	}
 
@@ -88,6 +153,12 @@ func getHeaderStyle(level int) lipgloss.Style {
 		return h2Style
 	case 3:
 		return h3Style
+	case 4:
+		return h4Style
+	case 5:
+		return h5Style
+	case 6:
+		return h6Style
 	default:
 		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("60"))
 	}
@@ -109,5 +180,35 @@ func appendNodeText(node *html.Node, sb *strings.Builder) {
 		}
 		// Traverse deeper if the child node contains other elements with text
 		appendNodeText(child, sb)
+	}
+}
+
+func renderInline(node *html.Node, sb *strings.Builder) {
+	switch node.Type {
+	case html.TextNode:
+		text := strings.TrimSpace(node.Data)
+		if text != "" {
+			sb.WriteString(text + " ")
+		}
+	case html.ElementNode:
+		switch node.Data {
+		case "strong", "b":
+			content := getNodeText(node)
+			sb.WriteString(lipgloss.NewStyle().Bold(true).Render(content))
+		case "em", "i":
+			content := getNodeText(node)
+			sb.WriteString(lipgloss.NewStyle().Italic(true).Render(content))
+		case "code":
+			content := getNodeText(node)
+			sb.WriteString(codeStyle.Render(content))
+		case "a":
+			content := getNodeText(node)
+			sb.WriteString(aStyle.Render(content))
+		default:
+			// For other inline tags, just recurse
+			for child := node.FirstChild; child != nil; child = child.NextSibling {
+				renderInline(child, sb)
+			}
+		}
 	}
 }
