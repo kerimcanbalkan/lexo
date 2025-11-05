@@ -3,10 +3,10 @@ package parser
 import (
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/list"
 	"golang.org/x/net/html"
 )
 
@@ -39,9 +39,7 @@ var (
 	aStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.AdaptiveColor{Light: "4", Dark: "4"}).
 		Underline(true)
-	pStyle  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "0", Dark: "15"})
-	liStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "4", Dark: "4"}).SetString("•").Padding(0, 1)
+	pStyle    = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "0", Dark: "15"})
 	codeStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.AdaptiveColor{Light: "15", Dark: "0"}).
 			Background(lipgloss.AdaptiveColor{Light: "0", Dark: "15"}).
@@ -63,8 +61,10 @@ func ParseHTML(f io.ReadCloser) (string, error) {
 	}
 
 	var sb strings.Builder
-	extractText(body, &sb)
-	return sb.String(), nil
+	renderText(body, &sb)
+	output := strings.TrimSpace(sb.String())
+
+	return output, nil
 }
 
 func findBody(node *html.Node) *html.Node {
@@ -79,89 +79,6 @@ func findBody(node *html.Node) *html.Node {
 		}
 	}
 	return nil
-}
-
-func extractText(node *html.Node, sb *strings.Builder) {
-	if node.Type == html.ElementNode {
-		// Handle header tags dynamically (h1 through h6)
-		if strings.HasPrefix(node.Data, "h") {
-			headerLevel, err := strconv.Atoi(node.Data[1:])
-			if err == nil && headerLevel >= 1 && headerLevel <= 6 {
-				style := getHeaderStyle(headerLevel)
-				content := getNodeText(node)
-				sb.WriteString(style.Render(content) + "\n")
-			}
-		} else if node.Data == "p" {
-			var inner strings.Builder
-			for child := node.FirstChild; child != nil; child = child.NextSibling {
-				renderInline(child, &inner)
-			}
-			sb.WriteString(pStyle.Render(inner.String()) + "\n\n")
-		} else if node.Data == "code" {
-			content := getNodeText(node)
-			sb.WriteString(codeStyle.Render(content) + "\n")
-		} else if node.Data == "pre" {
-			content := getNodeText(node)
-			sb.WriteString(codeStyle.Render(content) + "\n")
-		} else if node.Data == "a" {
-			content := getNodeText(node)
-			sb.WriteString(aStyle.Render(content) + "\n")
-		} else if node.Data == "ul" {
-			for child := node.FirstChild; child != nil; child = child.NextSibling {
-				if child.Type == html.ElementNode && child.Data == "li" {
-					content := getNodeText(child)
-					sb.WriteString(liStyle.Render(content) + "\n")
-					// Check for nested lists inside the same li
-					for grandchild := child.FirstChild; grandchild != nil; grandchild = grandchild.NextSibling {
-						if grandchild.Type == html.ElementNode && grandchild.Data == "ul" {
-							extractText(grandchild, sb)
-						}
-					}
-				}
-			}
-			sb.WriteString("\n")
-		} else if node.Data == "img" {
-			var altText string
-
-			// Extract the alt attribute
-			for _, attr := range node.Attr {
-				if attr.Key == "alt" {
-					altText = attr.Val
-					break
-				}
-			}
-
-			if altText != "" {
-				sb.WriteString(pStyle.Render(fmt.Sprintf("[IMG: %s]", altText)) + "\n\n")
-			} else {
-				sb.WriteString(pStyle.Render("[IMG]") + "\n\n")
-			}
-		}
-	}
-
-	// Traverse child nodes
-	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		extractText(child, sb)
-	}
-}
-
-func getHeaderStyle(level int) lipgloss.Style {
-	switch level {
-	case 1:
-		return h1Style
-	case 2:
-		return h2Style
-	case 3:
-		return h3Style
-	case 4:
-		return h4Style
-	case 5:
-		return h5Style
-	case 6:
-		return h6Style
-	default:
-		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("60"))
-	}
 }
 
 func getNodeText(node *html.Node) string {
@@ -183,7 +100,7 @@ func appendNodeText(node *html.Node, sb *strings.Builder) {
 	}
 }
 
-func renderInline(node *html.Node, sb *strings.Builder) {
+func renderText(node *html.Node, sb *strings.Builder) {
 	switch node.Type {
 	case html.TextNode:
 		text := strings.TrimSpace(node.Data)
@@ -192,6 +109,61 @@ func renderInline(node *html.Node, sb *strings.Builder) {
 		}
 	case html.ElementNode:
 		switch node.Data {
+		case "h1":
+			content := getNodeText(node)
+			sb.WriteString(h1Style.Render(content) + "\n")
+		case "h2":
+			content := getNodeText(node)
+			sb.WriteString(h2Style.Render(content) + "\n")
+		case "h3":
+			content := getNodeText(node)
+			sb.WriteString(h3Style.Render(content) + "\n")
+		case "h4":
+			content := getNodeText(node)
+			sb.WriteString(h4Style.Render(content) + "\n")
+		case "h5":
+			content := getNodeText(node)
+			sb.WriteString(h5Style.Render(content) + "\n")
+		case "h6":
+			content := getNodeText(node)
+			sb.WriteString(h6Style.Render(content) + "\n")
+		case "p":
+			content := getNodeText(node)
+			sb.WriteString(pStyle.Render(content) + "\n\n")
+		case "pre":
+			content := getNodeText(node)
+			sb.WriteString(codeStyle.Render(content) + "\n\n")
+		case "ul":
+			l := list.New()
+			for child := node.FirstChild; child != nil; child = child.NextSibling {
+				if child.Type == html.ElementNode && child.Data == "li" {
+					content := getNodeText(child)
+					l.Item(content)
+					// Check for nested lists inside the same li
+					for grandchild := child.FirstChild; grandchild != nil; grandchild = grandchild.NextSibling {
+						if grandchild.Type == html.ElementNode && grandchild.Data == "ul" {
+							renderText(grandchild, sb)
+						}
+					}
+				}
+			}
+			sb.WriteString(l.String() + "\n\n")
+		case "img":
+			var altText string
+
+			// Extract the alt attribute
+			for _, attr := range node.Attr {
+				if attr.Key == "alt" {
+					altText = attr.Val
+					break
+				}
+			}
+
+			if altText != "" {
+				sb.WriteString(pStyle.Render(fmt.Sprintf("[IMG: %s]", altText)) + "\n\n")
+			} else {
+				sb.WriteString(pStyle.Render("[IMG]") + "\n\n")
+			}
 		case "strong", "b":
 			content := getNodeText(node)
 			sb.WriteString(lipgloss.NewStyle().Bold(true).Render(content))
@@ -200,14 +172,14 @@ func renderInline(node *html.Node, sb *strings.Builder) {
 			sb.WriteString(lipgloss.NewStyle().Italic(true).Render(content))
 		case "code":
 			content := getNodeText(node)
-			sb.WriteString(codeStyle.Render(content))
+			sb.WriteString(codeStyle.Render(content) + "\n\n")
 		case "a":
 			content := getNodeText(node)
 			sb.WriteString(aStyle.Render(content))
 		default:
 			// For other inline tags, just recurse
 			for child := node.FirstChild; child != nil; child = child.NextSibling {
-				renderInline(child, sb)
+				renderText(child, sb)
 			}
 		}
 	}
